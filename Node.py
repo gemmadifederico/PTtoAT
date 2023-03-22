@@ -9,6 +9,7 @@ class Node:
         self.parentRelationship = parentRelationship
         self.children = []
         self.id = uuid.uuid4().hex
+        self.value = 0
         
     def setChildren(self, child):
         self.children.append(child)
@@ -57,3 +58,10 @@ class Node:
                     _get_leaf_nodes(n)
         _get_leaf_nodes(self)
         return leafs
+
+    def updateValue(self, value):
+        self.value = value
+    
+    def getValue(self):
+        return self.value
+        
