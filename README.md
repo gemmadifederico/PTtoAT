@@ -9,20 +9,21 @@ This work provides a method for the semi-automatic generation of Attack Trees us
 ## Implementation
 
 PTtoAT is implemented as a [Python](https://www.python.org/) application.
-The main script Translator.py is composed by the following steps:
-- Import the log file and derive a Process Tree using the Inductive Miner
+The main script PTtoAT.py is composed by the following steps:
+- Import the log file and derive a Process Tree using the Inductive Miner, or import directly a Process Tree file
 - Translate the Process Tree into an Attack Tree
 - Convert the AttackTree into RISQFlan code
 
 ## Usage/Example
 
-The implemented script directly derives an Attack Tree from the input log (in xes format). The following is the format of the execution, where:
-- LogFile is the filename of the xes file (withouth extension)
-- OutputFile is the filename of the output Attack Tree (withouth extension) 
+The implemented script can derive an Attack Tree directly from the input event log (in xes format), or translate a Process Tree into an Attack Tree. The following is the format of the execution, where:
+- filename is the filename of the log file (withouth extension, in xes format), or the filename of the Process Tree file (withouth extension, in xml format)
+- code [1,2], where 1 indicates the translation from an event log, 2 indicates the translation from a Process Tree
 ```python
-python Translator.py LogFile OutputFile
+python PTtoAT.py filename code
 ```
-A sample xes file is provided, which can be used to run the script using the following command:
+A sample log (.xes) file is provided, which can be used to run the script using the following command:
 ```python
-python Translator.py Example ATree
+python PTtoAT.py Example 1
 ```
+The script will save the Process Tree file in .xml, the Attack Tree file in .xml and the RISQFlan file in .bbt
