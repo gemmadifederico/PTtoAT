@@ -1,35 +1,3 @@
-# from pm4py.objects.log.importer.xes import importer as xes_importer
-# import sys
-# import datetime
-import copy
-import Node as nd
-import xml.etree.cElementTree as ET
-
-# from pm4py.objects.process_tree import importer
-# from pm4py.objects.process_tree import exporter
-from pm4py.objects.process_tree import obj
-from pm4py.objects.process_tree import obj as pt_operator
-
-# from pm4py import view_process_tree
-from pm4py import convert_to_petri_net
-from pm4py import play_out
-# from pm4py import write_xes
-
-import uuid
-
-from scipy.stats import triang as triangular
-import string
-import math
-import itertools
-from enum import Enum
-from itertools import accumulate as _accumulate, repeat as _repeat
-from bisect import bisect as _bisect
-import random
-from threading import Thread
-
-##########################################################################
-# PT GENERATOR
-##########################################################################
 '''
     This file is part of PM4Py (More Info: https://pm4py.fit.fraunhofer.de).
 
@@ -46,13 +14,26 @@ from threading import Thread
     You should have received a copy of the GNU General Public License
     along with PM4Py.  If not, see <https://www.gnu.org/licenses/>.
 '''
+from pm4py.objects.process_tree import obj
+from pm4py.objects.process_tree import obj as pt_operator
+from pm4py.objects.process_tree import exporter
+from pm4py import view_process_tree
+from pm4py import convert_to_petri_net
+from pm4py import play_out
+from pm4py import write_xes
+from pm4py import write_pnml
+import uuid
+import sys
+import argparse
 
-
-log = None
-processTree = None
-attackTree = 0
-code = None
-
+from scipy.stats import triang as triangular
+import string
+import math
+import itertools
+from enum import Enum
+from itertools import accumulate as _accumulate, repeat as _repeat
+from bisect import bisect as _bisect
+import random
 
 
 def choices(population, weights=None, *, cum_weights=None, k=1):
@@ -412,257 +393,39 @@ class GeneratedTree(object):
 
         return self.tree
     
-def generatePT(mode, min, max): 
-    global log
-    global pt
-
+def main(mode, min, max):
     # set the parameters for the PT generation
     parameters = { "mode": int(mode), "min": int(min), "max": int(max)}
     # generate the PT
-    # print("Starting PT generation...")
+    print("Starting PT generation...")
     pt = apply(parameters)
     # view_process_tree(pt,"png")
-    
+    code = str(uuid.uuid4())
+    code = code[-5:]
     # export the pt in ptml
-    # exporter.exporter.apply(pt, "Tests/PT_" +code + ".xml")
-    # print("PT generated and exported!")
+    exporter.exporter.apply(pt, "PT_" +code + ".xml")
+    print("PT generated and exported!")
 
     net, im, fm = convert_to_petri_net(pt)
     log = play_out(net, im, fm)
     #log = pm4py.play_out(thept)
+    #log = semantics.generate_log(nl, no_traces=5)
     # generate 1000 traces from the pt, and save them in a xes file
-    # write_xes(log, "Tests/PT_" + code +'.xes')
-    # print("Traces generated and exported!")
+    write_xes(log, "PT_" + code +'.xes')
+    print("Traces generated and exported!")
 
     file1 = open("PTfiles.txt", "a")  # append mode
     file1.write("PT_"+code+"\n")
     file1.close()
-
-##########################################################################
-# END PT GENERATOR
-##########################################################################
-
-##########################################################################
-# TRANSLATE PT TO AT
-##########################################################################
-
-count = 0
-# Translate the Process Tree into an Attack Tree
-def P2T(node):
-	global count
-    # If our current node is an operator
-	if not node.operator == None:
-		#print(node.operator)
-		#Create the new node
-		parent = nd.Node('tau' + str(count), 'non-observable')
-		#DFS on all children
-		for child in node.children:
-				count = count + 1
-				new = P2T(child)
-				if new == None:
-					continue
-
-			    #Set the relationship(SAND, AND, OR, XOR)
-			    #SEQUENCE -> SAND
-			    #PARALLEL -> AND
-			    #OR       -> OR
-			    #XOR      -> XOR
-			    #LOOP     -> ?
-				new.setParentRelationship(node.operator.name)
-				if new.getName() != None:
-					attckTreebranch = copy.deepcopy(new)
-					attckTreebranch.setID(uuid.uuid4().hex)
-					parent.setChildren(attckTreebranch)
-
-		#newp = copy.deepcopy(parent)
-		#newp.setID(uuid.uuid4().hex)
-		return copy.deepcopy(parent)
-
-    #If our current node is not an operator
-	elif node.label != '0':
-		#print(node.label)
-		return nd.Node(node.label, 'observable')
-
-# Convert to xml
-# Save the attack tree (bfs access)
-def AT2xml(node, filepath):
-	tree = ET.Element("tree")
-	if node is None:
-		return
-	queue = [node]
-	while len(queue) > 0:
-		cur_node = queue.pop(0)
-		ET.SubElement(tree, "root", name =cur_node.getName(), state =  "observable", id = cur_node.getID())
-		for child in cur_node.getChildren():
-			ET.SubElement(tree, "child", name = child.getName(), state =  "observable", parentRelationship = child.getParentRelationship(), parent = cur_node.getID(), id=child.getID())
-			queue.append(child)
-	ET.ElementTree(tree).write(filepath)
-
-def PTtoAT():
-    global attackTree
-
-    #Translate to Attack Tree
-    attackTree = P2T(pt)
-    # print("Attack tree translated!")
-
-    #Write Attck Tree to xml
-    # AT2xml(attackTree, "Tests\AT_"+code+".xml")
-    # print("Attack tree saved!")
-
-##########################################################################
-# END TRANSLATE PT TO AT
-##########################################################################
-
-##########################################################################
-# REPLAY OF TRACES ON THE AT
-##########################################################################
-
-#update the values in nodes
-def dfs(element, node):
-    if node == None:
-        return
     
-    if node.getName() == element:
-        node.updateValue(1)
-        return
-    
-    for child in node.getChildren():
-        dfs(element, child)
-        
-    return
-
-#clear the values in nodes
-def clear(node):
-    if node == None:
-        return
-    
-    for child in node.getChildren():
-        clear(child)
-    
-    node.updateValue(0)
-
-    return
-
-#Check the value of the node
-def check(node):
-    
-    if len(node.getChildren()) == 0:
-        return 
-    
-    relation = node.getChildren()[0].getParentRelationship()
-    
-    value = 0
-    
-    check_xor = 0
-    
-    check_seq = 0
-
-    for child in node.getChildren():
-        check(child)
-        value = value + child.getValue()
-
-    if relation == 'Or':
-        if value > 0:
-            node.updateValue(1)
-            
-    if relation == 'Xor':
-        for child in node.getChildren():
-            check_xor = check_xor + child.getValue()
-        if(check_xor == 1):
-            node.updateValue(1)
-        check_xor = 0
-    
-    if relation == 'And':
-        if value == len(node.getChildren()):
-            node.updateValue(1)
-            
-    if relation == 'SeqAnd':
-        for i in range(0,len(node.getChildren())):
-            if i==0:
-                if node.getChildren()[0].getValue() == 1:
-                    check_seq = check_seq + 1
-            else:
-                if(i == check_seq):
-                    check_seq = check_seq + 1
-                    
-        if(check_seq == len(node.getChildren())):
-            node.updateValue(1)
-        #print('check seq', check_seq)
-        
-        check_seq = 0
-      
-    return
-
-# Replay the traces on the Attack Tree
-def replay(trace):
-    #print(trace)
-    for element in trace:
-        dfs(element, attackTree)
-    check(attackTree)
-    return attackTree.getValue()
-
-def atReplay():
-        
-    # print("Replay of the traces on the AT...")
-    fitness = {}
-    x = 0
-    for trace in log:
-        tracetocheck = []
-        for event in trace:
-            tracetocheck.append(event.get("concept:name"))
-        #print(tracetocheck)
-        #print(trace.attributes, replay(tracetocheck))
-        fitness_value = replay(tracetocheck)
-        x =  x + fitness_value
-        clear(attackTree)
-        fitness[trace.attributes.get("concept:name")] = fitness_value
-    # print(x/len(log))
-    # print("Done!")
-
-    with open("Tests/Fitness_"+code+".txt", 'w') as f: 
-        for key, value in fitness.items(): 
-            f.write('%s,%s\n' % (key, value))
-    
-    file1 = open("fitness.txt", "a")  # append mode
-    file1.write("%f\n" % (x/len(log)))
-    file1.close()
-    # print("Results saved in the fitness file.")
-
-def main(uuid, mode, min, max):
-    global code
-    code = uuid
-    #if(len(sys.argv) != 4):
-    #    print("Use the following command: python TraceCheck.py mode min max (WITHOUT EXTENSION)")
-    #    quit()
-    # mode = sys.argv[1]
-    # min = sys.argv[2]
-    # max = sys.argv[3]
-    generatePT(mode, min, max)
-    PTtoAT()
-    atReplay()
-
 if __name__ == "__main__":
-    NUM_THREADS = 16
-    #c = 399
+    if(len(sys.argv) != 4):
+        print("Use the following command: python PTGenerator.py mode min max")
+        quit()
 
-    for n in range(NUM_THREADS):
-        #for x in range(int(c/NUM_THREADS)):
-        worker = Thread(target=main(str(uuid.uuid4())[-5:],150,150,300))
-        worker.start()
-
-"""
-    a = 299
-    for x in range(a):
-        code = str(uuid.uuid4())[-5:]
-        main(code,30,30,50)
-
-    b = 299
-    for x in range(b):
-        code = str(uuid.uuid4())[-5:]
-        main(code,50,50,100)
-
-    c = 399
-    for x in range(c):
-        code = str(uuid.uuid4())[-5:]
-        main(code,150,150,300)
-"""
+    #mode = sys.argv[1]
+    #min = sys.argv[2]
+    #max = sys.argv[3]
+    #main(mode, min, max)
+    main(sys.argv[1:])
+    print("Done.")

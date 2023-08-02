@@ -1,12 +1,14 @@
 import copy
-import graphviz
 import uuid
 import Node as nd
 import xml.etree.cElementTree as ET
-from IPython import display
-import pm4py
 import sys
+import datetime
+import pm4py
+from pm4py.objects.process_tree import importer
+from pm4py.objects.process_tree import exporter
 
+from io import StringIO
 
 count = 0
 # Translate the Process Tree into an Attack Tree
@@ -14,7 +16,7 @@ def P2T(node):
 	global count
     # If our current node is an operator
 	if not node.operator == None:
-		print(node.operator)
+		#print(node.operator)
 		#Create the new node
 		parent = nd.Node('tau' + str(count), 'non-observable')
 		#DFS on all children
@@ -42,7 +44,7 @@ def P2T(node):
 
     #If our current node is not an operator
 	elif node.label != '0':
-		print(node.label)
+		#print(node.label)
 		return nd.Node(node.label, 'observable')
 
 # Convert to xml
@@ -111,49 +113,71 @@ def Tree2RisQFLan(root, file):
 		file.write('end attack diagram\n')
 		file.write('// Here we can specify classes of attackers with probabilistic behavior\nbegin attackers\n attacker1\nend attackers\n// The effectiveness of a defence depends on the class of attacker and the attack action\nbegin defense effectiveness\nend defense effectiveness\n// Attacks may not be detected \nbegin attack detection rates\nend attack detection rates\n// Attributes of attacks are specified here\nbegin attributes\nend attributes\n// One can here impose additional constraints on the attacker, e.g. based on his budget\nbegin quantitative constraints\nend quantitative constraints\n//Domain-specific actions executed by the attacker\nbegin actions\nend actions\n//Constraints on the execution of actions\nbegin action constraints\nend action constraints\n//The probabilistic behaviour of each attacker\nbegin attacker behaviour\nbegin attack attacker\n= attacker1\nstates = state1\ntransitions = \n	state1 - (succ(' + root.getName() +'),1.0) -> state1\nend attack \nend attacker behaviour\n// Here we specify the attacker we want to consider\nbegin init\nattacker1\nend init\n//Finally, you can specify 3 types of analysis\n//analysis: statistical analysis of quantitative properties\n//exportDTMC: export the state space of the model (if finite) in a discrete time Markov chain in the format supported by the model checkers PRISM and STORM\n//simulate: perform a simulation to debug your model\n\n// In this particular case we are just interested in the likelihood of success of each attack\nbegin analysis\n   query = eval from 1 to 100 by 20 :\n    {'     + root.getName() +    '\n}\n    // Statistical confidence\n    default delta = 0.1\n    alpha = 0.1\n    // Parallelism to be exploited in the machine \n    parallelism = 1\nend analysis\nend model')
 
-# Here we deal directly with a process tree
-def main2(filei, fileo):
-    # import the process tree
-	ProcessTree = pm4py.objects.process_tree.importer.importer.apply(filei)
+def main_test(fn):
+	# import the process tree
+	pt = importer.importer.apply(fn+".xml")
+	print("pt imported")
+
+    #Translate to Attack Tree
+	at = P2T(pt)
+
+    #Write Attck Tree to xml
+	AT2xml(at, "AT_"+ fn[-5:])
+	print("Attack tree translated and saved!")
+
+	return at
+
+def main_pttoat(file, code):
+    # Import the process tree
+    pt = importer.importer.apply(file + ".xml")
+
+    #Translate to Attack Tree
+    at = P2T(pt)
+    print("Attack tree translated!")
+
+    #Write Attck Tree to xml
+    AT2xml(at, "AT_"+code)
+    print("Attack tree saved!")
+
+    #Convert to RISQFlan code
+    Tree2RisQFLan(at, "AT_"+code + ".bbt")
+    print("Attack tree converted to RISQFlan code!")
+
+def main_logtoat(file, code):
+	# Import the event log
+	log = pm4py.read_xes(file+".xes")
+ 
+	# Derive the PT using the inductive miner
+	pt = pm4py.discover_process_tree_inductive(log)
+	# Export the PT
+	exporter.exporter.apply(pt, "PT_" +code + ".xml")
+	print("Process Tree derived and saved!")
 
 	#Translate to Attack Tree
-	AttackTree = P2T(ProcessTree)
+	at = P2T(pt)
 	print("Attack tree translated!")
 
 	#Write Attck Tree to xml
-	AT2xml(AttackTree, fileo)
+	AT2xml(at, "AT_"+code)
+	print("Attack tree saved!")
 
 	#Convert to RISQFlan code
-	Tree2RisQFLan(AttackTree, fileo + ".bbt")
-	print("Attack tree converted to RISQFlan code!")
-
-# Here we take as input a xes file, we derive the process tree and then we translate it into an attack tree 
-def main(filexes, fileo):
-	# import the log file and derive a process tree
-	log = pm4py.read_xes(filexes+".xes")
-	ProcessTree = pm4py.discover_process_tree_inductive(log)
-    
-    # import the process tree
-	# ProcessTree = pm4py.objects.process_tree.importer.importer.apply(filei)
-
-	#Translate to Attack Tree
-	AttackTree = P2T(ProcessTree)
-	print("Attack tree translated!")
-
-	#Write Attck Tree to xml
-	AT2xml(AttackTree, fileo)
-
-	#Convert to RISQFlan code
-	Tree2RisQFLan(AttackTree, fileo + ".bbt")
+	Tree2RisQFLan(at, "AT_"+code + ".bbt")
 	print("Attack tree converted to RISQFlan code!")
 
 if __name__ == "__main__":
-    filei = sys.argv[1]
-    # filei = "ptree.xml"
-    fileo = sys.argv[2]
-    # fileo = "atree"
+    if(len(sys.argv) != 3):
+        print("Use the following command: python PTtoAT.py fileinput (WITHOUT EXTENSION) code (1 LogtoAT, 2 PTtoAT)")
+        quit()        
+    start = datetime.datetime.now()
+    file = sys.argv[1]
+    code = str(uuid.uuid4())
+    code = code[-5:]
     print("Starting conversion..")
-    print("Process tree file:", filei)
-    print("Attack tree file:", fileo + ".xml")
-    main(filei, fileo)
+    if(sys.argv[2] == "1"):
+        main_logtoat(file, code)
+    else:
+        main_pttoat(file, code)        
     print("Conversion completed!")
+    end = datetime.datetime.now()
+    print("Total ms. " + str((end.microsecond/1000) - (start.microsecond/1000)))
